@@ -163,8 +163,8 @@ const RING_C = 2 * Math.PI * 6
 // Moon phases wane with the hour; NO_COLOR keeps monochrome ring glyphs, since emoji draw in their own colors.
 const MOONS = ['🌕', '🌖', '🌗', '🌘']
 const COLD_MOON = '🌑'
-const GLYPHS = ['⬤', '◕', '◑', '◔', '○']
-const COLD_GLYPH = '∅'
+const GLYPHS = ['●', '◕', '◑', '◔', '○']
+const COLD_GLYPH = '◌'
 const RING_COLOR = { warm: '#9a9a9a', warn: '#d99a2b' }
 
 export type Countdown = { left: number; level: 'warm' | 'warn' | 'cold'; step: number; label: string }

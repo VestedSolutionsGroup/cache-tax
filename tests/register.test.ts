@@ -874,11 +874,11 @@ describe('countdown chip', () => {
     await $.session.start({ ...session, surface: 'terminal', isInteractive: true })
     const ui = await footer($)
     await $.turn.complete(turn())
-    expect((await ui.find({ type: 'Text', text: '⬤ 60m' }))?.text).toBe('⬤ 60m')
+    expect((await ui.find({ type: 'Text', text: '● 60m' }))?.text).toBe('● 60m')
     await clock.advance(50 * MIN)
     expect((await ui.find({ type: 'Text', text: '◔ 10m' }))?.props.bold).toBe(true)
     await clock.advance(10 * MIN)
-    expect((await ui.find({ type: 'Text', text: '∅ Cold' }))?.text).toBe('∅ Cold')
+    expect((await ui.find({ type: 'Text', text: '◌ Cold' }))?.text).toBe('◌ Cold')
   })
 
   test('terminal: the band above the prompt draws no chip', async ($, on) => {
@@ -920,7 +920,7 @@ describe('countdown chip', () => {
     await $.turn.complete(turn())
     const ui = await $.ui.mount({ plugin: 'cache-tax', surface: 'desktop', component: 'AbovePrompt', props: bandProps })
     expect(await ui.find({ type: 'Svg' })).toBe(undefined)
-    expect((await ui.find({ type: 'Text', text: '⬤' }))?.text).toBe('⬤')
+    expect((await ui.find({ type: 'Text', text: '●' }))?.text).toBe('●')
     const survey = await $.ui.mount({ plugin: 'cache-tax', surface: 'desktop', component: 'AbovePrompt', props: { ...bandProps, hasSurvey: true } })
     expect(await survey.find({ text: /60m/ })).toBe(undefined)
   })
