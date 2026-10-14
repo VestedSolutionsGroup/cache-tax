@@ -155,17 +155,15 @@ function statusText(s: State, now: number): string | undefined {
   return `keepwarm ${fmtDuration(s.deadline - now)} left${nextText}${pingText}`
 }
 
-// The countdown chip: how long the one-hour cache stays warm. Its ring drains in
+// The countdown chip: how long the one-hour cache stays warm. Its glyph steps in
 // 120 steps, every 30 seconds, so it redraws a few times a minute at most.
 const WARN_FRACTION = 0.2
 const RING_STEPS = 120
-const RING_C = 2 * Math.PI * 6
 // Moon phases wane with the hour; NO_COLOR keeps monochrome ring glyphs, since emoji draw in their own colors.
 const MOONS = ['🌝', '🌖', '🌗', '🌘', '🌚']
 const COLD_MOON = '💀'
 const GLYPHS = ['●', '◕', '◑', '◔', '○']
 const COLD_GLYPH = '◌'
-const RING_COLOR = { warm: '#9a9a9a', warn: '#d99a2b' }
 
 export type Countdown = { left: number; level: 'warm' | 'warn' | 'cold'; step: number; label: string }
 
@@ -179,23 +177,12 @@ export function countdown(s: State, now: number): Countdown | null {
   return { left, level, step, label }
 }
 
-/** The terminal's ring: one glyph that empties as the cache cools, a moon phase unless NO_COLOR is set. */
+/** The chip's glyph: one that empties as the cache cools, a moon phase unless NO_COLOR is set. */
 export function ringGlyph(c: Countdown, plain = false): string {
   if (c.level === 'cold') return plain ? COLD_GLYPH : COLD_MOON
   const set = plain ? GLYPHS : MOONS
   const emptied = 1 - c.step / RING_STEPS
   return set[Math.min(set.length - 1, Math.round(emptied * (set.length - 1)))]
-}
-
-/** The desktop's ring: a track and an arc that drains clockwise from twelve, dashed once cold. */
-export function ringSvg(c: Countdown): string {
-  const offset = (RING_C * (1 - c.step / RING_STEPS)).toFixed(2)
-  const track = c.level === 'cold'
-    ? '<circle cx="8" cy="8" r="6" fill="none" stroke="#8a8a8a" stroke-opacity=".6" stroke-width="1.75" stroke-dasharray="1.6 2.1"/>'
-    : '<circle cx="8" cy="8" r="6" fill="none" stroke="#8a8a8a" stroke-opacity=".35" stroke-width="1.75"/>'
-  const arc = c.level === 'cold' ? ''
-    : `<circle cx="8" cy="8" r="6" fill="none" stroke="${RING_COLOR[c.level]}" stroke-width="1.75" stroke-linecap="round" stroke-dasharray="${RING_C.toFixed(2)}" stroke-dashoffset="${offset}" transform="rotate(-90 8 8)"/>`
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 16 16">${track}${arc}</svg>`
 }
 
 /** Redraws when the chip's label or ring changes, then waits for the next change: the next 30-second step, or the next second in the last minute. */
@@ -405,9 +392,7 @@ export const register: Register = on => {
     // The desktop draws the footer's mode labels on a row of their own, so its chip sits at the band's right.
     const c = e.surface === 'desktop' ? countdown(s, now) : null
     if (!c) return row ? Box({ flexDirection: 'column', children: [rest, row] }) : rest
-    const ring = noColor ? Text({ children: [ringGlyph(c, true)] })
-      : $.ui.resolve(e).Svg({ source: ringSvg(c), alt: `Prompt cache: ${c.label}`, width: 14, height: 14 })
-    const chip = Box({ flexDirection: 'row', alignItems: 'center', flexShrink: 0, columnGap: 1, children: [ring, Text({ ...chipStyle(c), children: [c.label] })] })
+    const chip = Box({ flexShrink: 0, children: [Text({ ...chipStyle(c), children: [`${ringGlyph(c, noColor)} ${c.label}`] })] })
     return Box({ flexDirection: 'column', children: [
       rest,
       Box({ flexDirection: 'row', alignItems: 'center', justifyContent: row ? 'space-between' : 'flex-end', width: e.props.bodyColumns, children: row ? [row, chip] : [chip] }),
