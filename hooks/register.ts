@@ -160,6 +160,9 @@ function statusText(s: State, now: number): string | undefined {
 const WARN_FRACTION = 0.2
 const RING_STEPS = 120
 const RING_C = 2 * Math.PI * 6
+// Moon phases wane with the hour; NO_COLOR keeps monochrome ring glyphs, since emoji draw in their own colors.
+const MOONS = ['🌕', '🌖', '🌗', '🌘']
+const COLD_MOON = '🌑'
 const GLYPHS = ['⬤', '◕', '◑', '◔', '○']
 const COLD_GLYPH = '∅'
 const RING_COLOR = { warm: '#9a9a9a', warn: '#d99a2b' }
@@ -176,10 +179,12 @@ export function countdown(s: State, now: number): Countdown | null {
   return { left, level, step, label }
 }
 
-/** The terminal's ring: one glyph that empties as the cache cools. */
-export function ringGlyph(c: Countdown): string {
-  if (c.level === 'cold') return COLD_GLYPH
+/** The terminal's ring: one glyph that empties as the cache cools, a moon phase unless NO_COLOR is set. */
+export function ringGlyph(c: Countdown, plain = false): string {
+  if (c.level === 'cold') return plain ? COLD_GLYPH : COLD_MOON
   const emptied = 1 - c.step / RING_STEPS
+  // Each moon covers a quarter of the hour; the ring glyphs step at their nearest fill.
+  if (!plain) return MOONS[Math.min(MOONS.length - 1, Math.floor(emptied * MOONS.length))]
   return GLYPHS[Math.min(GLYPHS.length - 1, Math.round(emptied * (GLYPHS.length - 1)))]
 }
 
@@ -368,7 +373,7 @@ export const register: Register = on => {
     const c = countdown(s, await $.clock.now())
     if (!c) return next(e)
     const { Box, Text } = $.ui.resolve(e)
-    const chip = Text({ ...chipStyle(c), children: [`${ringGlyph(c)} ${c.label}`] })
+    const chip = Text({ ...chipStyle(c), children: [`${ringGlyph(c, noColor)} ${c.label}`] })
     if (e.props.modes.length === 0) return chip
     const theirs = await next(e)
     return Box({ flexDirection: 'row', alignItems: 'center', children: [theirs, Text({ dimColor: true, children: [' · '] }), chip] })
@@ -401,7 +406,7 @@ export const register: Register = on => {
     // The desktop draws the footer's mode labels on a row of their own, so its chip sits at the band's right.
     const c = e.surface === 'desktop' ? countdown(s, now) : null
     if (!c) return row ? Box({ flexDirection: 'column', children: [rest, row] }) : rest
-    const ring = noColor ? Text({ children: [ringGlyph(c)] })
+    const ring = noColor ? Text({ children: [ringGlyph(c, true)] })
       : $.ui.resolve(e).Svg({ source: ringSvg(c), alt: `Prompt cache: ${c.label}`, width: 14, height: 14 })
     const chip = Box({ flexDirection: 'row', alignItems: 'center', flexShrink: 0, columnGap: 1, children: [ring, Text({ ...chipStyle(c), children: [c.label] })] })
     return Box({ flexDirection: 'column', children: [
