@@ -161,7 +161,7 @@ const WARN_FRACTION = 0.2
 const RING_STEPS = 120
 const RING_C = 2 * Math.PI * 6
 // Moon phases wane with the hour; NO_COLOR keeps monochrome ring glyphs, since emoji draw in their own colors.
-const MOONS = ['🌕', '🌖', '🌗', '🌘']
+const MOONS = ['🌕', '🌖', '🌗', '🌘', '🌚']
 const COLD_MOON = '🌑'
 const GLYPHS = ['●', '◕', '◑', '◔', '○']
 const COLD_GLYPH = '◌'
@@ -182,10 +182,9 @@ export function countdown(s: State, now: number): Countdown | null {
 /** The terminal's ring: one glyph that empties as the cache cools, a moon phase unless NO_COLOR is set. */
 export function ringGlyph(c: Countdown, plain = false): string {
   if (c.level === 'cold') return plain ? COLD_GLYPH : COLD_MOON
+  const set = plain ? GLYPHS : MOONS
   const emptied = 1 - c.step / RING_STEPS
-  // Each moon covers a quarter of the hour; the ring glyphs step at their nearest fill.
-  if (!plain) return MOONS[Math.min(MOONS.length - 1, Math.floor(emptied * MOONS.length))]
-  return GLYPHS[Math.min(GLYPHS.length - 1, Math.round(emptied * (GLYPHS.length - 1)))]
+  return set[Math.min(set.length - 1, Math.round(emptied * (set.length - 1)))]
 }
 
 /** The desktop's ring: a track and an arc that drains clockwise from twelve, dashed once cold. */

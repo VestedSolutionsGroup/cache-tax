@@ -848,7 +848,7 @@ describe('countdown chip', () => {
     expect((await chip())?.text).toBe('🌘 12m')
     expect((await chip())?.props.color).toBe('warning')
     await clock.advance(11 * MIN + 18 * 1000)
-    expect((await chip())?.text).toBe('🌘 0:42')
+    expect((await chip())?.text).toBe('🌚 0:42')
     await clock.advance(MIN)
     expect((await chip())?.text).toBe('🌑 Cold')
     expect((await chip())?.props.dimColor).toBe(true)
