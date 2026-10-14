@@ -839,7 +839,7 @@ describe('countdown chip', () => {
     expect(await ui.find({ text: /m$|Cold/ })).toBe(undefined)
     await $.turn.complete(turn())
     const chip = async () => ui.find({ type: 'Text', text: /^. (\d+m|0:\d\d|Cold)$/ })
-    expect((await chip())?.text).toBe('● 60m')
+    expect((await chip())?.text).toBe('⬤ 60m')
     expect((await chip())?.props.dimColor).toBe(true)
     expect((await ui.find({ text: /^their modes$/ }))?.text).toBe('their modes')
     await clock.advance(30 * MIN)
@@ -850,10 +850,10 @@ describe('countdown chip', () => {
     await clock.advance(11 * MIN + 18 * 1000)
     expect((await chip())?.text).toBe('○ 0:42')
     await clock.advance(MIN)
-    expect((await chip())?.text).toBe('◌ Cold')
+    expect((await chip())?.text).toBe('∅ Cold')
     expect((await chip())?.props.dimColor).toBe(true)
     await $.turn.complete(turn())
-    expect((await chip())?.text).toBe('● 60m')
+    expect((await chip())?.text).toBe('⬤ 60m')
   })
 
   test('terminal footer: with no mode labels the chip stands alone; compaction hides it', async ($, on) => {
@@ -862,10 +862,10 @@ describe('countdown chip', () => {
     await $.session.start({ ...session, surface: 'terminal', isInteractive: true })
     const ui = await footer($, [])
     await $.turn.complete(turn())
-    expect((await ui.find({ type: 'Text', text: '● 60m' }))?.text).toBe('● 60m')
+    expect((await ui.find({ type: 'Text', text: '⬤ 60m' }))?.text).toBe('⬤ 60m')
     expect(await ui.find({ text: ' · ' })).toBe(undefined)
     await $.session.compact({ trigger: 'manual', messages: [{ role: 'user', text: 'summary', toolUses: [] }] })
-    expect(await ui.find({ text: '● 60m' })).toBe(undefined)
+    expect(await ui.find({ text: '⬤ 60m' })).toBe(undefined)
   })
 
   test('terminal: the band above the prompt draws no chip', async ($, on) => {
@@ -907,7 +907,7 @@ describe('countdown chip', () => {
     await $.turn.complete(turn())
     const ui = await $.ui.mount({ plugin: 'cache-tax', surface: 'desktop', component: 'AbovePrompt', props: bandProps })
     expect(await ui.find({ type: 'Svg' })).toBe(undefined)
-    expect((await ui.find({ type: 'Text', text: '●' }))?.text).toBe('●')
+    expect((await ui.find({ type: 'Text', text: '⬤' }))?.text).toBe('⬤')
     const survey = await $.ui.mount({ plugin: 'cache-tax', surface: 'desktop', component: 'AbovePrompt', props: { ...bandProps, hasSurvey: true } })
     expect(await survey.find({ text: /60m/ })).toBe(undefined)
   })

@@ -160,8 +160,8 @@ function statusText(s: State, now: number): string | undefined {
 const WARN_FRACTION = 0.2
 const RING_STEPS = 120
 const RING_C = 2 * Math.PI * 6
-const GLYPHS = ['●', '◕', '◑', '◔', '○']
-const COLD_GLYPH = '◌'
+const GLYPHS = ['⬤', '◕', '◑', '◔', '○']
+const COLD_GLYPH = '∅'
 const RING_COLOR = { warm: '#9a9a9a', warn: '#d99a2b' }
 
 export type Countdown = { left: number; level: 'warm' | 'warn' | 'cold'; step: number; label: string }
