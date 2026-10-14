@@ -93,7 +93,7 @@ The hook and the mod share a name and a job, so having both means two guards on 
 Validated on Claude Code 2.1.289:
 
     ❯ ./register.ts hooks: config.set{key=theme}, ui.render{component=SessionMode}, ui.render{component=AbovePrompt}, session.start, classic.SessionStart, command.run{command=keepwarm}, command.run{command=cache-tax}, prompt.submit, turn.step, turn.complete, session.compact
-    ❯ ./register.ts calls: $.clock.after, $.clock.now, $.command.list, $.command.register, $.config.list, $.env.get, $.model.fork (via ping), $.session.id, $.session.model, $.session.usage, $.store.delete (via prune, startWindow, stop), $.store.get, $.store.set, $.ui.invalidate, $.ui.log, $.ui.resolve, $.ui.status
+    ❯ ./register.ts calls: $.clock.after (via arm, tick), $.clock.now, $.command.list, $.command.register, $.config.list, $.env.get, $.model.fork (via ping), $.session.id, $.session.model, $.session.usage, $.store.delete (via prune, startWindow, stop), $.store.get, $.store.set, $.ui.invalidate, $.ui.log, $.ui.resolve, $.ui.status
     ❯ ./register.ts env reads: NO_COLOR
 
 Reach L2, drives Claude. Sees every prompt you type, every model request's timing and every answer's token counts.
