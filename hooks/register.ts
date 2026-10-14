@@ -46,6 +46,7 @@ export type State = {
   pending: { cancel: () => void } | null
   last: PingRecord | null
   stopped: string | null
+  drawn: string | null
 }
 
 function priceOf(model: string | null): [number, number, number] | null {
@@ -152,6 +153,57 @@ function statusText(s: State, now: number): string | undefined {
     : isCold(s, now) ? ` · cold now, first ping ${fmtDuration(s.every)} after the next turn`
     : ` · ping in ${fmtDuration(s.lastRequestAt + s.every - now)}`
   return `keepwarm ${fmtDuration(s.deadline - now)} left${nextText}${pingText}`
+}
+
+// The countdown chip: how long the one-hour cache stays warm. Its ring drains in
+// 120 steps, every 30 seconds, so it redraws a few times a minute at most.
+const WARN_FRACTION = 0.2
+const RING_STEPS = 120
+const RING_C = 2 * Math.PI * 6
+const GLYPHS = ['●', '◕', '◑', '◔', '○']
+const COLD_GLYPH = '◌'
+const RING_COLOR = { warm: '#9a9a9a', warn: '#d99a2b' }
+
+export type Countdown = { left: number; level: 'warm' | 'warn' | 'cold'; step: number; label: string }
+
+/** Where the cache's one-hour clock stands, or null before the first request and after compaction. */
+export function countdown(s: State, now: number): Countdown | null {
+  if (!s.lastRequestAt || s.compacted) return null
+  const left = s.lastRequestAt + TTL_MS - now
+  const level = left <= 0 ? 'cold' : left <= TTL_MS * WARN_FRACTION ? 'warn' : 'warm'
+  const step = left <= 0 ? 0 : Math.ceil(left / TTL_MS * RING_STEPS)
+  const label = left <= 0 ? 'Cold' : left <= 59000 ? '0:' + String(Math.ceil(left / 1000)).padStart(2, '0') : Math.ceil(left / 60000) + 'm'
+  return { left, level, step, label }
+}
+
+/** The terminal's ring: one glyph that empties as the cache cools. */
+export function ringGlyph(c: Countdown): string {
+  if (c.level === 'cold') return COLD_GLYPH
+  const emptied = 1 - c.step / RING_STEPS
+  return GLYPHS[Math.min(GLYPHS.length - 1, Math.round(emptied * (GLYPHS.length - 1)))]
+}
+
+/** The desktop's ring: a track and an arc that drains clockwise from twelve, dashed once cold. */
+export function ringSvg(c: Countdown): string {
+  const offset = (RING_C * (1 - c.step / RING_STEPS)).toFixed(2)
+  const track = c.level === 'cold'
+    ? '<circle cx="8" cy="8" r="6" fill="none" stroke="#8a8a8a" stroke-opacity=".6" stroke-width="1.75" stroke-dasharray="1.6 2.1"/>'
+    : '<circle cx="8" cy="8" r="6" fill="none" stroke="#8a8a8a" stroke-opacity=".35" stroke-width="1.75"/>'
+  const arc = c.level === 'cold' ? ''
+    : `<circle cx="8" cy="8" r="6" fill="none" stroke="${RING_COLOR[c.level]}" stroke-width="1.75" stroke-linecap="round" stroke-dasharray="${RING_C.toFixed(2)}" stroke-dashoffset="${offset}" transform="rotate(-90 8 8)"/>`
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 16 16">${track}${arc}</svg>`
+}
+
+/** Redraws when the chip's label or ring changes, then waits for the next change: the next 30-second step, or the next second in the last minute. */
+async function tick($: EngineInterface, s: State) {
+  const c = countdown(s, await $.clock.now())
+  const key = c ? c.level + c.label + c.step : ''
+  if (key !== s.drawn) {
+    s.drawn = key
+    $.ui.invalidate('ui.render')
+  }
+  const unit = c && c.left > 0 && c.left <= 60000 ? 1000 : 30000
+  $.clock.after(c && c.left > 0 ? c.left % unit || unit : unit, () => { void tick($, s) })
 }
 
 function updateStatus($: EngineInterface, s: State, now: number) {
@@ -289,7 +341,7 @@ function card(s: State, now: number): string {
 export function freshState(): State {
   return {
     hasBand: false, sid: '', deadline: 0, every: PING_AFTER_MS, always: false, lastRequestAt: 0, lastModel: null, ctx: 0, compacted: false,
-    guard: 'refuse', ackedAt: 0, coldWritePending: false, misses: [], pending: null, last: null, stopped: null,
+    guard: 'refuse', ackedAt: 0, coldWritePending: false, misses: [], pending: null, last: null, stopped: null, drawn: null,
   }
 }
 
@@ -307,30 +359,54 @@ export const register: Register = on => {
     return result
   })
 
+  // The label stays in the footer's dim gray until the last fifth of the hour.
+  const chipStyle = (c: Countdown) => c.level === 'warn' ? (noColor ? { bold: true } : { color: 'warning' }) : { dimColor: true }
+
+  // The terminal's footer: the countdown chip after Claude Code's mode labels.
+  on('ui.render', { component: 'SessionMode' }, async ($, e, next) => {
+    if (e.surface !== 'terminal') return next(e)
+    const c = countdown(s, await $.clock.now())
+    if (!c) return next(e)
+    const { Box, Text } = $.ui.resolve(e)
+    const chip = Text({ ...chipStyle(c), children: [`${ringGlyph(c)} ${c.label}`] })
+    if (e.props.modes.length === 0) return chip
+    const theirs = await next(e)
+    return Box({ flexDirection: 'row', alignItems: 'center', children: [theirs, Text({ dimColor: true, children: [' · '] }), chip] })
+  })
+
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const rest = await next(e)
     if (!s.hasBand || e.props.hasSurvey) return rest
     const now = await $.clock.now()
-    const text = statusText(s, now)
-    if (!text || (s.deadline && now >= s.deadline)) return rest
-    const state = s.stopped ? 'stopped' : !s.lastRequestAt || s.compacted ? 'unknown' : isCold(s, now) ? 'cold' : 'warm'
-    const color = noColor ? undefined : state === 'warm' ? 'success' : state === 'cold' ? (light ? '#c15f3c' : '#d97757') : undefined
     const { Box, Text } = $.ui.resolve(e)
-    const asset = statusIcons[light ? 'light' : 'dark'][state === 'warm' || state === 'cold' ? state : 'neutral']
-    const icon = noColor ? Text({ bold: true, children: ['[>]'] })
-      : e.surface === 'terminal' ? $.ui.resolve(e).Image({ source: { png: asset.png }, columns: 3, rows: 1, alt: '[>]' })
-      : e.surface === 'desktop' ? $.ui.resolve(e).Svg({ source: asset.svg, width: 18, height: 18, alt: 'Cache Tax' })
-      : Text({ color, bold: true, children: ['[>]'] })
-    return Box({ flexDirection: 'column', children: [
-      rest,
-      Box({ flexDirection: 'row', alignItems: 'center', children: [
+    const text = statusText(s, now)
+    let row = null
+    if (text && !(s.deadline && now >= s.deadline)) {
+      const state = s.stopped ? 'stopped' : !s.lastRequestAt || s.compacted ? 'unknown' : isCold(s, now) ? 'cold' : 'warm'
+      const color = noColor ? undefined : state === 'warm' ? 'success' : state === 'cold' ? (light ? '#c15f3c' : '#d97757') : undefined
+      const asset = statusIcons[light ? 'light' : 'dark'][state === 'warm' || state === 'cold' ? state : 'neutral']
+      const icon = noColor ? Text({ bold: true, children: ['[>]'] })
+        : e.surface === 'terminal' ? $.ui.resolve(e).Image({ source: { png: asset.png }, columns: 3, rows: 1, alt: '[>]' })
+        : e.surface === 'desktop' ? $.ui.resolve(e).Svg({ source: asset.svg, width: 18, height: 18, alt: 'Cache Tax' })
+        : Text({ color, bold: true, children: ['[>]'] })
+      row = Box({ flexDirection: 'row', alignItems: 'center', children: [
         Box({ flexShrink: 0, children: [icon] }),
         Text({ children: [
           ' cache-tax · ',
           Text({ color, bold: true, children: [state] }),
           ` · ${text}`,
         ] }),
-      ] }),
+      ] })
+    }
+    // The desktop draws the footer's mode labels on a row of their own, so its chip sits at the band's right.
+    const c = e.surface === 'desktop' ? countdown(s, now) : null
+    if (!c) return row ? Box({ flexDirection: 'column', children: [rest, row] }) : rest
+    const ring = noColor ? Text({ children: [ringGlyph(c)] })
+      : $.ui.resolve(e).Svg({ source: ringSvg(c), alt: `Prompt cache: ${c.label}`, width: 14, height: 14 })
+    const chip = Box({ flexDirection: 'row', alignItems: 'center', flexShrink: 0, columnGap: 1, children: [ring, Text({ ...chipStyle(c), children: [c.label] })] })
+    return Box({ flexDirection: 'column', children: [
+      rest,
+      Box({ flexDirection: 'row', alignItems: 'center', justifyContent: row ? 'space-between' : 'flex-end', width: e.props.bodyColumns, children: row ? [row, chip] : [chip] }),
     ] })
   })
 
@@ -342,6 +418,11 @@ export const register: Register = on => {
       light = typeof theme === 'string' && theme.startsWith('light')
       noColor = Boolean(await $.env.get('NO_COLOR'))
       $.ui.status(undefined)
+      // A reload starts the session again; one ticker is enough.
+      if (s.drawn === null) {
+        s.drawn = ''
+        void tick($, s)
+      }
     }
     s.sid = await $.session.id()
     const now = await $.clock.now()
@@ -503,6 +584,8 @@ export const register: Register = on => {
     }
     s.coldWritePending = false
     await arm($, s)
+    // The countdown chip restarts with every turn, armed or not.
+    if (s.hasBand) $.ui.invalidate('ui.render')
     return r
   })
 
@@ -514,6 +597,7 @@ export const register: Register = on => {
       s.ackedAt = 0
       disarm(s)
       await arm($, s)
+      if (s.hasBand) $.ui.invalidate('ui.render')
     }
     return r
   })
