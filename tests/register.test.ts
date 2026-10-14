@@ -850,7 +850,7 @@ describe('countdown chip', () => {
     await clock.advance(11 * MIN + 18 * 1000)
     expect((await chip())?.text).toBe('🌚 0:42')
     await clock.advance(MIN)
-    expect((await chip())?.text).toBe('☠️ Cold')
+    expect((await chip())?.text).toBe('💀 Cold')
     expect((await chip())?.props.dimColor).toBe(true)
     await $.turn.complete(turn())
     expect((await chip())?.text).toBe('🌝 60m')
