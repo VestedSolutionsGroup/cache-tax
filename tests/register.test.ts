@@ -863,6 +863,7 @@ describe('countdown chip', () => {
     const ui = await footer($, [])
     await $.turn.complete(turn())
     expect((await ui.find({ type: 'Text', text: '🌝 60m' }))?.text).toBe('🌝 60m')
+    expect((await ui.find({ type: 'Box' }))?.props.marginLeft).toBe(1)
     expect(await ui.find({ text: ' · ' })).toBe(undefined)
     await $.session.compact({ trigger: 'manual', messages: [{ role: 'user', text: 'summary', toolUses: [] }] })
     expect(await ui.find({ text: '🌝 60m' })).toBe(undefined)

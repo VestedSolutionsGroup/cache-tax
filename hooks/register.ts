@@ -360,7 +360,8 @@ export const register: Register = on => {
     if (!c) return next(e)
     const { Box, Text } = $.ui.resolve(e)
     const chip = Text({ ...chipStyle(c), children: [`${ringGlyph(c, noColor)} ${c.label}`] })
-    if (e.props.modes.length === 0) return chip
+    // A column of space keeps the glyph off whatever the footer draws to its left.
+    if (e.props.modes.length === 0) return Box({ marginLeft: 1, children: [chip] })
     const theirs = await next(e)
     return Box({ flexDirection: 'row', alignItems: 'center', children: [theirs, Text({ dimColor: true, children: [' · '] }), chip] })
   })
