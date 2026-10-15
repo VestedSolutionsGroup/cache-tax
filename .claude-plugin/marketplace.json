@@ -11,7 +11,7 @@
       "name": "cache-tax",
       "source": "./",
       "description": "Keeps the one-hour prompt cache warm during breaks and stops a cold send once with its estimated rewrite cost.",
-      "version": "2.3.5"
+      "version": "2.3.6"
     }
   ]
 }
