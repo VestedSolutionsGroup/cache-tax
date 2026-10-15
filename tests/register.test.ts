@@ -922,12 +922,12 @@ describe('countdown chip', () => {
     expect((await band.find({ type: 'Text', text: 'cache-tax' }))?.text).toMatch(/warm/)
     expect(await band.find({ text: /^\S+ 10m$/ })).toBe(undefined)
     expect((await glyph())?.text).toBe('🌘')
-    expect((await detail())?.text).toBe('Keep Warm · 1h 30m / 1h 30m')
+    expect((await detail())?.text).toBe('Keep Warm · 0m / 1h 30m')
     await $.command.run(run('keepwarm', 'off'))
     expect((await detail())?.text).toBe('Keep Warm · off')
     await clock.advance(10 * MIN)
     expect((await glyph())?.text).toBe('💀')
-    expect((await title())?.text).toBe('Context Cache TTL · expired')
+    expect((await title())?.text).toBe('Context Cache TTL · cold')
     expect(await band.find({ type: 'Svg' })).toBe(undefined)
   })
 
@@ -954,22 +954,21 @@ describe('countdown chip', () => {
     }
   })
 
-  test('desktop card: minutes, the last minute in seconds, expired, and the keepwarm window', () => {
+  test('desktop card: minutes to cold, and how far the keepwarm window has run', () => {
     const s = freshState()
     s.lastRequestAt = START
     const at = (t: number) => cardLines(s, countdown(s, t)!, t)
     expect(at(START + 21 * MIN)).toEqual({ title: 'Context Cache TTL · 39 minutes', detail: 'Keep Warm · off' })
     expect(at(START + 59 * MIN)).toEqual({ title: 'Context Cache TTL · 1 minute', detail: 'Keep Warm · off' })
-    expect(at(START + 59 * MIN + 18 * 1000).title).toBe('Context Cache TTL · 42 seconds')
-    expect(at(START + HOUR - 1000).title).toBe('Context Cache TTL · 1 second')
-    expect(at(START + HOUR).title).toBe('Context Cache TTL · expired')
+    expect(at(START + 59 * MIN + 42 * 1000).title).toBe('Context Cache TTL · 1 minute')
+    expect(at(START + HOUR).title).toBe('Context Cache TTL · cold')
     s.window = 6 * HOUR
     s.deadline = START + 51 * MIN + 3 * HOUR
     expect(at(START + 51 * MIN).detail).toBe('Keep Warm · 3h / 6h')
-    s.deadline = START + 51 * MIN + 2 * HOUR + 51 * MIN
+    s.deadline = START + 51 * MIN + 3 * HOUR + 9 * MIN
     expect(at(START + 51 * MIN)).toEqual({ title: 'Context Cache TTL · 9 minutes', detail: 'Keep Warm · 2h 51m / 6h' })
     s.window = 0
-    expect(at(START + 51 * MIN).detail).toBe('Keep Warm · 2h 51m left')
+    expect(at(START + 51 * MIN).detail).toBe('Keep Warm · 3h 9m left')
     expect(at(s.deadline).detail).toBe('Keep Warm · off')
   })
 

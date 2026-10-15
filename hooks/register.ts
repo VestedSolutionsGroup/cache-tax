@@ -200,21 +200,22 @@ async function tick($: EngineInterface, s: State) {
   $.clock.after(c && c.left > 0 ? c.left % unit || unit : unit, () => { void tick($, s) })
 }
 
-/** Minutes and hours as the desktop card spells them: `2h 51m`, `6h`, `39m`. */
-function fmtSpan(ms: number): string {
-  const total = Math.max(0, Math.ceil(ms / 60000))
+/** Whole minutes as the desktop card spells them: `2h 51m`, `6h`, `39m`. */
+function fmtSpan(total: number): string {
   const h = Math.floor(total / 60)
   const m = total % 60
   return h && m ? `${h}h ${m}m` : h ? `${h}h` : `${m}m`
 }
 
-/** The desktop hover card: the cache's time left, then keepwarm's window. */
+/** The desktop hover card: the cache's minutes left, then how far keepwarm's window has run. */
 export function cardLines(s: State, c: Countdown, now: number): { title: string; detail: string } {
-  const secs = Math.ceil(c.left / 1000)
   const mins = Math.ceil(c.left / 60000)
-  const ttl = c.level === 'cold' ? 'expired' : c.left <= 59000 ? `${secs} second${secs === 1 ? '' : 's'}` : `${mins} minute${mins === 1 ? '' : 's'}`
+  const ttl = c.level === 'cold' ? 'cold' : `${mins} minute${mins === 1 ? '' : 's'}`
   const armed = s.deadline > now
-  const warm = !armed ? 'off' : s.window ? `${fmtSpan(s.deadline - now)} / ${fmtSpan(s.window)}` : `${fmtSpan(s.deadline - now)} left`
+  // A reload restores only the deadline, so without the window's length the card says what is left instead.
+  const warm = !armed ? 'off'
+    : s.window ? `${fmtSpan(Math.floor((s.window - (s.deadline - now)) / 60000))} / ${fmtSpan(Math.round(s.window / 60000))}`
+    : `${fmtSpan(Math.ceil((s.deadline - now) / 60000))} left`
   return { title: `Context Cache TTL · ${ttl}`, detail: `Keep Warm · ${warm}` }
 }
 
