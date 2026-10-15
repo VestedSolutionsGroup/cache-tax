@@ -372,9 +372,9 @@ export const register: Register = on => {
   // The label stays in the footer's dim gray until the last fifth of the hour.
   const chipStyle = (c: Countdown) => c.level === 'warn' ? (noColor ? { bold: true } : { color: 'warning' }) : { dimColor: true }
 
-  // The terminal's footer: the countdown chip after Claude Code's mode labels.
+  // The footer, terminal and desktop alike: the countdown chip after Claude Code's mode labels.
   on('ui.render', { component: 'SessionMode' }, async ($, e, next) => {
-    if (e.surface !== 'terminal') return next(e)
+    if (!drawsBand(e.surface)) return next(e)
     const c = countdown(s, await $.clock.now())
     if (!c) return next(e)
     const { Box, Text } = $.ui.resolve(e)
@@ -409,14 +409,7 @@ export const register: Register = on => {
         ] }),
       ] })
     }
-    // The desktop draws the footer's mode labels on a row of their own, so its chip sits at the band's right.
-    const c = e.surface === 'desktop' ? countdown(s, now) : null
-    if (!c) return row ? Box({ flexDirection: 'column', children: [rest, row] }) : rest
-    const chip = Box({ flexShrink: 0, children: [Text({ ...chipStyle(c), children: [`${ringGlyph(c, noColor)} ${c.label}`] })] })
-    return Box({ flexDirection: 'column', children: [
-      rest,
-      Box({ flexDirection: 'row', alignItems: 'center', justifyContent: row ? 'space-between' : 'flex-end', width: e.props.bodyColumns, children: row ? [row, chip] : [chip] }),
-    ] })
+    return row ? Box({ flexDirection: 'column', children: [rest, row] }) : rest
   })
 
   // The desktop app hosts the session through the SDK, so session.start sees no surface;
