@@ -167,9 +167,9 @@ const COLD_GLYPH = '◌'
 
 export type Countdown = { left: number; level: 'warm' | 'warn' | 'cold'; step: number; label: string }
 
-/** Where the cache's one-hour clock stands, or null before the first request and after compaction. */
+/** Where the cache's one-hour clock stands, or null before the first request. A compaction restarts it. */
 export function countdown(s: State, now: number): Countdown | null {
-  if (!s.lastRequestAt || s.compacted) return null
+  if (!s.lastRequestAt) return null
   const left = s.lastRequestAt + TTL_MS - now
   const level = left <= 0 ? 'cold' : left <= TTL_MS * WARN_FRACTION ? 'warn' : 'warm'
   const step = left <= 0 ? 0 : Math.ceil(left / TTL_MS * RING_STEPS)
@@ -594,6 +594,8 @@ export const register: Register = on => {
     const r = await next(e)
     if (!e.agentId) {
       s.compacted = true
+      // The summary is a request of its own and runs no turn, so the chip restarts from it rather than waiting for the next turn.
+      s.lastRequestAt = await $.clock.now()
       s.ctx = 0
       s.ackedAt = 0
       disarm(s)
