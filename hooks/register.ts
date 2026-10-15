@@ -197,6 +197,10 @@ async function tick($: EngineInterface, s: State) {
   $.clock.after(c && c.left > 0 ? c.left % unit || unit : unit, () => { void tick($, s) })
 }
 
+// The desktop chip's hover colors, sampled from the app's own usage popup in its dark theme.
+const desktopDark = { hover: '#262626', card: '#20201f', border: '#373736' }
+const desktopLight = { hover: '#ebe9e4', card: '#ffffff', border: '#d9d7d2' }
+
 function drawsBand(surface: string | null): boolean {
   return surface === 'terminal' || surface === 'desktop'
 }
@@ -378,7 +382,24 @@ export const register: Register = on => {
     const c = countdown(s, await $.clock.now())
     if (!c) return next(e)
     const { Box, Text } = $.ui.resolve(e)
-    const chip = Text({ ...chipStyle(c), children: [`${ringGlyph(c, noColor)} ${c.label}`] })
+    const glyph = ringGlyph(c, noColor)
+    // On desktop the glyph stands alone and the time left moves into a card that the pointer reveals,
+    // drawn like the app's own usage popup: the chip lights under the pointer and the card sits above it.
+    const chip = e.surface !== 'desktop' ? Text({ ...chipStyle(c), children: [`${glyph} ${c.label}`] }) : (() => {
+      const title = c.level === 'cold' ? 'Prompt cache: cold' : `Prompt cache: ${c.label} left`
+      const detail = c.level === 'cold' ? 'The next send rewrites it' : 'Each reply restarts the hour'
+      const palette = light ? desktopLight : desktopDark
+      const card = Box({
+        position: 'absolute', bottom: 1, right: 0, display: 'none', hover: { display: 'flex' },
+        flexDirection: 'column', minWidth: Math.max(title.length, detail.length) + 4, paddingX: 1,
+        backgroundColor: palette.card, borderStyle: 'round', borderColor: palette.border,
+        children: [
+          Text({ bold: true, ...(c.level === 'warn' ? chipStyle(c) : {}), children: [title] }),
+          Text({ dimColor: true, children: [detail] }),
+        ],
+      })
+      return Box({ key: 'cache-tax-chip', position: 'relative', paddingX: 1, hover: { backgroundColor: palette.hover }, children: [Text({ children: [glyph] }), card] })
+    })()
     // A column of space keeps the glyph off whatever the footer draws to its left.
     if (e.props.modes.length === 0) return Box({ marginLeft: 1, children: [chip] })
     const theirs = await next(e)
