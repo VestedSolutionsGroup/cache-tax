@@ -34,7 +34,7 @@ type ForkAnswer = null | ModelForkResult | { read: number; write: number; out?: 
 
 // The world beneath the mod: its store, the engine's answers, and a fork that
 // replies from a script so each test decides what the cache looked like.
-function world(on: On, forkAnswers: ForkAnswer[], opts: { store?: Map<string, unknown>; commands?: string[]; live?: { tokens?: number }; sid?: string; model?: string; bandText?: string; theme?: { value: string }; noColor?: boolean; denyTheme?: boolean; writtenTheme?: string } = {}) {
+function world(on: On, forkAnswers: ForkAnswer[], opts: { store?: Map<string, unknown>; commands?: string[]; live?: { tokens?: number }; sid?: string; model?: string; bandText?: string; theme?: { value: string }; noColor?: boolean; surfaces?: Array<'terminal' | 'desktop' | 'mobile' | 'vscode'>; denyTheme?: boolean; writtenTheme?: string } = {}) {
   if (opts.store) {
     const store = opts.store
     on('store.get', ($, e) => ({ value: store.get(e.key) }))
@@ -55,6 +55,8 @@ function world(on: On, forkAnswers: ForkAnswer[], opts: { store?: Map<string, un
   const entered: string[] = []
   on('session.start', ($, e) => ({ cwd: e.cwd }))
   on('session.id', () => ({ value: opts.sid ?? 'S1' }))
+  on('session.surfaces', () => ({ value: opts.surfaces ?? [] }))
+  on('session.attach', ($, e) => ({ clientId: e.clientId }))
   on('session.model', () => ({ value: opts.model ?? 'claude-fable-5-1' }))
   on('session.usage', () => ({ value: { startedAt: START, context: { window: 1000000, tokens: opts.live?.tokens }, rateLimits: [] } }))
   on('command.register', ($, e) => ({ value: { command: e.name } }))
@@ -863,6 +865,7 @@ describe('countdown chip', () => {
     const ui = await footer($, [])
     await $.turn.complete(turn())
     expect((await ui.find({ type: 'Text', text: '🌝 60m' }))?.text).toBe('🌝 60m')
+    expect((await ui.find({ type: 'Box' }))?.props.marginLeft).toBe(1)
     expect(await ui.find({ text: ' · ' })).toBe(undefined)
     await $.session.compact({ trigger: 'manual', messages: [{ role: 'user', text: 'summary', toolUses: [] }] })
     expect(await ui.find({ text: '🌝 60m' })).toBe(undefined)
@@ -911,6 +914,27 @@ describe('countdown chip', () => {
     await clock.advance(10 * MIN)
     expect((await chip())?.text).toBe('💀 Cold')
     expect(await ui.find({ type: 'Svg' })).toBe(undefined)
+  })
+
+  test('desktop as the app hosts it: no surface at start, the chip arrives when the app attaches', async ($, on) => {
+    mock.clock(on, { now: START })
+    world(on, [])
+    await $.session.start({ ...session, surface: null, isInteractive: false })
+    await $.turn.complete(turn())
+    const ui = await $.ui.mount({ plugin: 'cache-tax', surface: 'desktop', component: 'AbovePrompt', props: bandProps })
+    const chip = async () => ui.find({ type: 'Text', text: /^\S+ (\d+m|0:\d\d|Cold)$/ })
+    expect(await chip()).toBe(undefined)
+    await $.session.attach({ surface: 'desktop', clientId: 'desktop:default' })
+    expect((await chip())?.text).toBe('🌝 60m')
+  })
+
+  test('desktop: a reload while the app is attached keeps the chip', async ($, on) => {
+    mock.clock(on, { now: START })
+    world(on, [], { surfaces: ['desktop'] })
+    await $.session.start({ ...session, surface: null, isInteractive: false })
+    await $.turn.complete(turn())
+    const ui = await $.ui.mount({ plugin: 'cache-tax', surface: 'desktop', component: 'AbovePrompt', props: bandProps })
+    expect((await ui.find({ type: 'Text', text: '🌝 60m' }))?.text).toBe('🌝 60m')
   })
 
   test('desktop: NO_COLOR uses the ring glyphs, and a survey hides the chip', async ($, on) => {
