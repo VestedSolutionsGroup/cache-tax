@@ -219,9 +219,16 @@ export function cardLines(s: State, c: Countdown, now: number): { title: string;
   return { title: `Context Cache TTL · ${ttl}`, detail: `Keep Warm · ${warm}` }
 }
 
-// The desktop chip's hover colors, sampled from the app's own usage popup in its dark theme.
-const desktopDark = { hover: '#262626', card: '#20201f', border: '#373736' }
-const desktopLight = { hover: '#ebe9e4', card: '#ffffff', border: '#d9d7d2' }
+// The desktop chip: the glyph in a square that lights under the pointer, its tooltip the hover text.
+const CHIP_PX = 20
+export function chipSvg(glyph: string, tooltip: string, light: boolean): string {
+  const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const [ink, hover] = light ? ['#3d3d3a', '#ebe9e4'] : ['#c2c0b6', '#262626']
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${CHIP_PX}" height="${CHIP_PX}" viewBox="0 0 ${CHIP_PX} ${CHIP_PX}">`
+    + `<style>rect{fill:transparent}svg:hover rect{fill:${hover}}</style><title>${esc(tooltip)}</title>`
+    + `<rect width="${CHIP_PX}" height="${CHIP_PX}" rx="4"/>`
+    + `<text x="50%" y="50%" dominant-baseline="central" text-anchor="middle" font-size="13" fill="${ink}">${esc(glyph)}</text></svg>`
+}
 
 function drawsBand(surface: string | null): boolean {
   return surface === 'terminal' || surface === 'desktop'
@@ -408,21 +415,11 @@ export const register: Register = on => {
     if (!c) return next(e)
     const { Box, Text } = $.ui.resolve(e)
     const glyph = ringGlyph(c, noColor)
-    // On desktop the glyph stands alone and the time left moves into a card that the pointer reveals,
-    // drawn like the app's own usage popup: the chip lights under the pointer and the card sits above it.
+    // On desktop the glyph stands alone and the time left shows on hover. The app draws a Box's hover
+    // reveal inline in the footer, so the glyph is an interactive SVG whose <title> is the tooltip.
     const chip = e.surface !== 'desktop' ? Text({ ...chipStyle(c), children: [`${glyph} ${c.label}`] }) : (() => {
       const { title, detail } = cardLines(s, c, now)
-      const palette = light ? desktopLight : desktopDark
-      const card = Box({
-        position: 'absolute', bottom: 1, right: 0, display: 'none', hover: { display: 'flex' },
-        flexDirection: 'column', minWidth: Math.max(title.length, detail.length) + 4, paddingX: 1,
-        backgroundColor: palette.card, borderStyle: 'round', borderColor: palette.border,
-        children: [
-          Text({ bold: true, ...(c.level === 'warn' ? chipStyle(c) : {}), children: [title] }),
-          Text({ dimColor: true, children: [detail] }),
-        ],
-      })
-      return Box({ key: 'cache-tax-chip', position: 'relative', paddingX: 1, hover: { backgroundColor: palette.hover }, children: [Text({ children: [glyph] }), card] })
+      return $.ui.resolve(e).Svg({ source: chipSvg(glyph, `${title}\n${detail}`, light), width: CHIP_PX, height: CHIP_PX, alt: `${title}. ${detail}`, isInteractive: true })
     })()
     // A column of space keeps the glyph off whatever the footer draws to its left.
     if (e.props.modes.length === 0) return Box({ marginLeft: 1, children: [chip] })
