@@ -2,7 +2,7 @@ import { describe, expect, mock, test, tier } from 'claude-code/testing'
 import type { CommandRunInput, ConfigSetInput, ModelForkResult, On, PromptSubmitInput, RenderPropsOf, SessionStartInput, TurnCompleteInput, TurnUsage } from 'claude-code'
 
 import { statusIcons } from '../hooks/status-icons'
-import { fmtDuration, freshState, parseDuration, resetForClear, seedFromResume } from '../hooks/register'
+import { cardLines, countdown, fmtDuration, freshState, parseDuration, resetForClear, seedFromResume } from '../hooks/register'
 
 tier('user')
 
@@ -904,26 +904,30 @@ describe('countdown chip', () => {
     const ui = await desktopFooter($)
     const band = await $.ui.mount({ plugin: 'cache-tax', surface: 'desktop', component: 'AbovePrompt', props: bandProps })
     const glyph = async () => ui.find({ type: 'Text', text: /^\S+$/ })
-    const title = async () => ui.find({ type: 'Text', text: /^Prompt cache: / })
+    const title = async () => ui.find({ type: 'Text', text: /^Context Cache TTL · / })
+    const detail = async () => ui.find({ type: 'Text', text: /^Keep Warm · / })
     expect(await glyph()).toBe(undefined)
     await $.turn.complete(turn())
     expect((await glyph())?.text).toBe('🌝')
-    expect((await title())?.text).toBe('Prompt cache: 60m left')
+    expect((await title())?.text).toBe('Context Cache TTL · 60 minutes')
+    expect((await detail())?.text).toBe('Keep Warm · off')
     expect(await ui.find({ type: 'Text', text: /^\S+ 60m$/ })).toBe(undefined)
     expect(await band.find({ text: /60m/ })).toBe(undefined)
     await clock.advance(50 * MIN)
     expect((await glyph())?.text).toBe('🌘')
-    expect((await title())?.text).toBe('Prompt cache: 10m left')
+    expect((await title())?.text).toBe('Context Cache TTL · 10 minutes')
     expect((await title())?.props.color).toBe('warning')
     await $.command.run(run('keepwarm', '90m'))
     expect((await band.find({ type: 'Svg' }))?.props.alt).toBe('Cache Tax')
     expect((await band.find({ type: 'Text', text: 'cache-tax' }))?.text).toMatch(/warm/)
     expect(await band.find({ text: /^\S+ 10m$/ })).toBe(undefined)
     expect((await glyph())?.text).toBe('🌘')
+    expect((await detail())?.text).toBe('Keep Warm · 1h 30m / 1h 30m')
     await $.command.run(run('keepwarm', 'off'))
+    expect((await detail())?.text).toBe('Keep Warm · off')
     await clock.advance(10 * MIN)
     expect((await glyph())?.text).toBe('💀')
-    expect((await title())?.text).toBe('Prompt cache: cold')
+    expect((await title())?.text).toBe('Context Cache TTL · expired')
     expect(await band.find({ type: 'Svg' })).toBe(undefined)
   })
 
@@ -936,7 +940,7 @@ describe('countdown chip', () => {
       const ui = await $.ui.mount({ plugin: 'cache-tax', surface: 'desktop', component: 'SessionMode', props: { modes } as unknown as RenderPropsOf['SessionMode'] })
       const chip = await ui.find({ key: 'cache-tax-chip' })
       expect(chip?.type).toBe('Box')
-      expect(chip?.text).toBe('🌝Prompt cache: 60m leftEach reply restarts the hour')
+      expect(chip?.text).toBe('🌝Context Cache TTL · 60 minutesKeep Warm · off')
       type Drawn = { type: string; key?: string; props: Record<string, unknown>; hover?: Record<string, unknown>; children: Drawn[] }
       const outer = (await ui.findAll({ type: 'Box' }))[0].children as Drawn[]
       const drawn = outer.find(d => d.props?.key === 'cache-tax-chip')
@@ -945,9 +949,28 @@ describe('countdown chip', () => {
       expect(glyph.type).toBe('Text')
       expect(card.props).toMatchObject({ position: 'absolute', bottom: 1, right: 0, display: 'none', backgroundColor: '#20201f' })
       expect(card.hover).toEqual({ display: 'flex' })
-      expect((await ui.find({ type: 'Text', text: /^Prompt cache: / }))?.text).toBe('Prompt cache: 60m left')
-      expect((await ui.find({ type: 'Text', text: 'Each reply restarts the hour' }))?.props.dimColor).toBe(true)
+      expect((await ui.find({ type: 'Text', text: /^Context Cache TTL · / }))?.text).toBe('Context Cache TTL · 60 minutes')
+      expect((await ui.find({ type: 'Text', text: 'Keep Warm · off' }))?.props.dimColor).toBe(true)
     }
+  })
+
+  test('desktop card: minutes, the last minute in seconds, expired, and the keepwarm window', () => {
+    const s = freshState()
+    s.lastRequestAt = START
+    const at = (t: number) => cardLines(s, countdown(s, t)!, t)
+    expect(at(START + 21 * MIN)).toEqual({ title: 'Context Cache TTL · 39 minutes', detail: 'Keep Warm · off' })
+    expect(at(START + 59 * MIN)).toEqual({ title: 'Context Cache TTL · 1 minute', detail: 'Keep Warm · off' })
+    expect(at(START + 59 * MIN + 18 * 1000).title).toBe('Context Cache TTL · 42 seconds')
+    expect(at(START + HOUR - 1000).title).toBe('Context Cache TTL · 1 second')
+    expect(at(START + HOUR).title).toBe('Context Cache TTL · expired')
+    s.window = 6 * HOUR
+    s.deadline = START + 51 * MIN + 3 * HOUR
+    expect(at(START + 51 * MIN).detail).toBe('Keep Warm · 3h / 6h')
+    s.deadline = START + 51 * MIN + 2 * HOUR + 51 * MIN
+    expect(at(START + 51 * MIN)).toEqual({ title: 'Context Cache TTL · 9 minutes', detail: 'Keep Warm · 2h 51m / 6h' })
+    s.window = 0
+    expect(at(START + 51 * MIN).detail).toBe('Keep Warm · 2h 51m left')
+    expect(at(s.deadline).detail).toBe('Keep Warm · off')
   })
 
   test('desktop as the app hosts it: no surface at start, the band turns on when the app attaches', async ($, on) => {
