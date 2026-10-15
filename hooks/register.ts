@@ -197,6 +197,25 @@ async function tick($: EngineInterface, s: State) {
   $.clock.after(c && c.left > 0 ? c.left % unit || unit : unit, () => { void tick($, s) })
 }
 
+function drawsBand(surface: string | null): boolean {
+  return surface === 'terminal' || surface === 'desktop'
+}
+
+/** Moves from the plain status text to the band and chip once a surface that draws them is here; answers the display preferences. */
+async function bandOn($: EngineInterface, s: State): Promise<{ light: boolean; noColor: boolean }> {
+  s.hasBand = true
+  const theme = (await $.config.list()).find(row => row.key === 'theme')?.value
+  const noColor = Boolean(await $.env.get('NO_COLOR'))
+  $.ui.status(undefined)
+  // A reload starts the session again; one ticker is enough.
+  if (s.drawn === null) {
+    s.drawn = ''
+    void tick($, s)
+  }
+  $.ui.invalidate('ui.render')
+  return { light: typeof theme === 'string' && theme.startsWith('light'), noColor }
+}
+
 function updateStatus($: EngineInterface, s: State, now: number) {
   if (s.hasBand) $.ui.invalidate('ui.render')
   else $.ui.status(statusText(s, now))
@@ -400,20 +419,19 @@ export const register: Register = on => {
     ] })
   })
 
+  // The desktop app hosts the session through the SDK, so session.start sees no surface;
+  // the app arrives afterwards as an attached client.
+  on('session.attach', async ($, e, next) => {
+    const r = await next(e)
+    if (drawsBand(e.surface) && !s.hasBand) ({ light, noColor } = await bandOn($, s))
+    return r
+  })
+
   on('session.start', async ($, e, next) => {
     const r = await next(e)
-    s.hasBand = e.surface === 'terminal' || e.surface === 'desktop'
-    if (s.hasBand) {
-      const theme = (await $.config.list()).find(row => row.key === 'theme')?.value
-      light = typeof theme === 'string' && theme.startsWith('light')
-      noColor = Boolean(await $.env.get('NO_COLOR'))
-      $.ui.status(undefined)
-      // A reload starts the session again; one ticker is enough.
-      if (s.drawn === null) {
-        s.drawn = ''
-        void tick($, s)
-      }
-    }
+    // A reload while the desktop is attached starts with no surface of its own; the roster still names it.
+    s.hasBand = false
+    if (drawsBand(e.surface) || (await $.session.surfaces()).some(drawsBand)) ({ light, noColor } = await bandOn($, s))
     s.sid = await $.session.id()
     const now = await $.clock.now()
     await prune($, s, now)
