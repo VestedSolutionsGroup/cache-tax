@@ -1,0 +1,17 @@
+{
+  "name": "vsg",
+  "owner": {
+    "name": "Vested Solutions Group"
+  },
+  "metadata": {
+    "description": "Vested Solutions Group's build of the cache-tax Claude Code mod."
+  },
+  "plugins": [
+    {
+      "name": "cache-tax",
+      "source": "./",
+      "description": "Keeps the one-hour prompt cache warm during breaks and stops a cold send once with its estimated rewrite cost.",
+      "version": "2.3.1"
+    }
+  ]
+}
