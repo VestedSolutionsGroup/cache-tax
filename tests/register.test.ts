@@ -858,17 +858,29 @@ describe('countdown chip', () => {
     expect((await chip())?.text).toBe('🌝 60m')
   })
 
-  test('terminal footer: with no mode labels the chip stands alone; compaction hides it', async ($, on) => {
-    mock.clock(on, { now: START })
-    world(on, [])
+  test('terminal footer: with no mode labels the chip stands alone; compaction restarts it at 60m', async ($, on) => {
+    const clock = mock.clock(on, { now: START })
+    const w = world(on, [])
     await $.session.start({ ...session, surface: 'terminal', isInteractive: true })
     const ui = await footer($, [])
     await $.turn.complete(turn())
     expect((await ui.find({ type: 'Text', text: '🌝 60m' }))?.text).toBe('🌝 60m')
     expect((await ui.find({ type: 'Box' }))?.props.marginLeft).toBe(1)
     expect(await ui.find({ text: ' · ' })).toBe(undefined)
+    await clock.advance(40 * MIN)
+    expect((await ui.find({ type: 'Text', text: '🌘 20m' }))?.text).toBe('🌘 20m')
     await $.session.compact({ trigger: 'manual', messages: [{ role: 'user', text: 'summary', toolUses: [] }] })
-    expect(await ui.find({ text: '🌝 60m' })).toBe(undefined)
+    expect((await ui.find({ type: 'Text', text: '🌝 60m' }))?.text).toBe('🌝 60m')
+    // A subagent's compaction leaves the main clock alone.
+    await clock.advance(10 * MIN)
+    await $.session.compact({ trigger: 'auto', agentId: 'worker', messages: [{ role: 'user', text: 'summary', toolUses: [] }] })
+    expect((await ui.find({ type: 'Text', text: /50m$/ }))?.text).toBe('🌖 50m')
+    // With no turn after it, the restarted hour still lapses, and the guard stays quiet over the summary.
+    await clock.advance(50 * MIN)
+    expect((await ui.find({ type: 'Text', text: '💀 Cold' }))?.text).toBe('💀 Cold')
+    await $.prompt.submit(prompt('after compact'))
+    expect(w.entered).toEqual(['after compact'])
+    expect(w.forks.length).toBe(0)
   })
 
   test('terminal footer: NO_COLOR keeps monochrome ring glyphs and a bold warning', async ($, on) => {
@@ -934,6 +946,19 @@ describe('countdown chip', () => {
     expect(w.status.at(-1)).toBe(undefined)
     await $.turn.complete(turn())
     expect((await (await desktopFooter($)).find({ type: 'Text', text: '🌝 60m' }))?.text).toBe('🌝 60m')
+  })
+
+  test('desktop: compaction restarts the chip at 60m without waiting for a turn', async ($, on) => {
+    const clock = mock.clock(on, { now: START })
+    world(on, [])
+    await $.session.start({ ...session, surface: null, isInteractive: false })
+    await $.session.attach({ surface: 'desktop', clientId: 'desktop:default' })
+    const ui = await desktopFooter($)
+    await $.turn.complete(turn())
+    await clock.advance(45 * MIN)
+    expect((await ui.find({ type: 'Text', text: '🌘 15m' }))?.text).toBe('🌘 15m')
+    await $.session.compact({ trigger: 'manual', messages: [{ role: 'user', text: 'summary', toolUses: [] }] })
+    expect((await ui.find({ type: 'Text', text: '🌝 60m' }))?.text).toBe('🌝 60m')
   })
 
   test('desktop: a reload while the app is attached keeps the band', async ($, on) => {
