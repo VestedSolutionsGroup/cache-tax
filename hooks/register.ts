@@ -33,8 +33,6 @@ export type State = {
   hasBand: boolean
   sid: string
   deadline: number
-  /** The armed window's full length, for the desktop card; 0 when unknown, as after a reload restores only the deadline. */
-  window: number
   every: number
   always: boolean
   lastRequestAt: number
@@ -187,47 +185,16 @@ export function ringGlyph(c: Countdown, plain = false): string {
   return set[Math.min(set.length - 1, Math.round(emptied * (set.length - 1)))]
 }
 
-/** Redraws when the chip's label or ring, or keepwarm's minutes left, changes, then waits for the next change: the next 30-second step, or the next second in the last minute. */
+/** Redraws when the chip's label or ring changes, then waits for the next change: the next 30-second step, or the next second in the last minute. */
 async function tick($: EngineInterface, s: State) {
-  const now = await $.clock.now()
-  const c = countdown(s, now)
-  const key = (c ? c.level + c.label + c.step : '') + (s.deadline > now ? ':' + Math.ceil((s.deadline - now) / 60000) : '')
+  const c = countdown(s, await $.clock.now())
+  const key = c ? c.level + c.label + c.step : ''
   if (key !== s.drawn) {
     s.drawn = key
     $.ui.invalidate('ui.render')
   }
   const unit = c && c.left > 0 && c.left <= 60000 ? 1000 : 30000
   $.clock.after(c && c.left > 0 ? c.left % unit || unit : unit, () => { void tick($, s) })
-}
-
-/** Whole minutes as the desktop card spells them: `2h 51m`, `6h`, `39m`. */
-function fmtSpan(total: number): string {
-  const h = Math.floor(total / 60)
-  const m = total % 60
-  return h && m ? `${h}h ${m}m` : h ? `${h}h` : `${m}m`
-}
-
-/** The desktop hover card: the cache's minutes left, then how far keepwarm's window has run. */
-export function cardLines(s: State, c: Countdown, now: number): { title: string; detail: string } {
-  const mins = Math.ceil(c.left / 60000)
-  const ttl = c.level === 'cold' ? 'cold' : `${mins} minute${mins === 1 ? '' : 's'}`
-  const armed = s.deadline > now
-  // A reload restores only the deadline, so without the window's length the card says what is left instead.
-  const warm = !armed ? 'off'
-    : s.window ? `${fmtSpan(Math.floor((s.window - (s.deadline - now)) / 60000))} / ${fmtSpan(Math.round(s.window / 60000))}`
-    : `${fmtSpan(Math.ceil((s.deadline - now) / 60000))} left`
-  return { title: `Context Cache TTL · ${ttl}`, detail: `Keep Warm · ${warm}` }
-}
-
-// The desktop chip: the glyph in a square that lights under the pointer, its tooltip the hover text.
-const CHIP_PX = 20
-export function chipSvg(glyph: string, tooltip: string, light: boolean): string {
-  const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  const [ink, hover] = light ? ['#3d3d3a', '#ebe9e4'] : ['#c2c0b6', '#262626']
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${CHIP_PX}" height="${CHIP_PX}" viewBox="0 0 ${CHIP_PX} ${CHIP_PX}">`
-    + `<style>rect{fill:transparent}svg:hover rect{fill:${hover}}</style><title>${esc(tooltip)}</title>`
-    + `<rect width="${CHIP_PX}" height="${CHIP_PX}" rx="4"/>`
-    + `<text x="50%" y="50%" dominant-baseline="central" text-anchor="middle" font-size="13" fill="${ink}">${esc(glyph)}</text></svg>`
 }
 
 function drawsBand(surface: string | null): boolean {
@@ -283,7 +250,6 @@ async function prune($: EngineInterface, s: State, now: number) {
 
 async function stop($: EngineInterface, s: State, why: string | null, forgetAlways = false) {
   s.deadline = 0
-  s.window = 0
   s.every = PING_AFTER_MS
   s.stopped = why
   disarm(s)
@@ -357,7 +323,6 @@ async function startWindow($: EngineInterface, s: State, windowMs: number, every
   if (every === PING_AFTER_MS) await $.store.delete(everyKey(s))
   else await $.store.set(everyKey(s), every)
   s.deadline = now + windowMs
-  s.window = windowMs
   s.stopped = null
   await $.store.set(deadlineKey(s), s.deadline)
   await arm($, s)
@@ -385,7 +350,7 @@ function card(s: State, now: number): string {
 
 export function freshState(): State {
   return {
-    hasBand: false, sid: '', deadline: 0, window: 0, every: PING_AFTER_MS, always: false, lastRequestAt: 0, lastModel: null, ctx: 0, compacted: false,
+    hasBand: false, sid: '', deadline: 0, every: PING_AFTER_MS, always: false, lastRequestAt: 0, lastModel: null, ctx: 0, compacted: false,
     guard: 'refuse', ackedAt: 0, coldWritePending: false, misses: [], pending: null, last: null, stopped: null, drawn: null,
   }
 }
@@ -410,17 +375,10 @@ export const register: Register = on => {
   // The footer, terminal and desktop alike: the countdown chip after Claude Code's mode labels.
   on('ui.render', { component: 'SessionMode' }, async ($, e, next) => {
     if (!drawsBand(e.surface)) return next(e)
-    const now = await $.clock.now()
-    const c = countdown(s, now)
+    const c = countdown(s, await $.clock.now())
     if (!c) return next(e)
     const { Box, Text } = $.ui.resolve(e)
-    const glyph = ringGlyph(c, noColor)
-    // On desktop the glyph stands alone and the time left shows on hover. The app draws a Box's hover
-    // reveal inline in the footer, so the glyph is an interactive SVG whose <title> is the tooltip.
-    const chip = e.surface !== 'desktop' ? Text({ ...chipStyle(c), children: [`${glyph} ${c.label}`] }) : (() => {
-      const { title, detail } = cardLines(s, c, now)
-      return $.ui.resolve(e).Svg({ source: chipSvg(glyph, `${title}\n${detail}`, light), width: CHIP_PX, height: CHIP_PX, alt: `${title}. ${detail}`, isInteractive: true })
-    })()
+    const chip = Text({ ...chipStyle(c), children: [`${ringGlyph(c, noColor)} ${c.label}`] })
     // A column of space keeps the glyph off whatever the footer draws to its left.
     if (e.props.modes.length === 0) return Box({ marginLeft: 1, children: [chip] })
     const theirs = await next(e)
